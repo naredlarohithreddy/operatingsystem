@@ -1,0 +1,107 @@
+alias userSP R10;
+userSP=SP;
+
+alias pt R13;
+pt=PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16;
+
+[pt+9]=7; //mode flag = read sys call num 7
+
+[pt+13]=SP; //saving user stack pointer
+SP=[pt+11]*512-1;//switching to kernal stack
+
+alias retAddress R12;
+retAddress=[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512;
+
+alias fd R11;
+fd=[[PTBR+2*((userSP-4)/512)]*512 + (userSP-4)%512];
+
+alias buffer R9;
+buffer=[[PTBR+2*((userSP-3)/512)]*512+((userSP-3)%512)];
+if(fd==-1) then
+    multipush(R9,R10,R11,R12,R13);
+    R1=4;  // terminal_read func call number
+    R2=[SYSTEM_STATUS_TABLE+1];
+    R3=buffer;
+    call DEVICE_MANAGER; //module 4
+    multipop(R9,R10,R11,R12,R13);
+    [retAddress]=0;
+else
+    if((fd<0)||(fd>7)) then // invalid fd
+        [retAddress]=-1;
+        SP=userSP;
+        ireturn;
+    endif;
+    alias fdEntry R6;
+    fdEntry=[pt+11]*512+496+2*fd;
+    if(([fdEntry]==-1)||([fdEntry]!=FILE)) then //invalid fd
+        [retAddress]=-1;
+        SP=userSP;
+        ireturn;
+    endif;
+    alias openfileEntry R14;
+    openfileEntry=OPEN_FILE_TABLE+4*[fdEntry+1];
+    alias inodeIndex R7;
+    inodeIndex=[openfileEntry];
+    multipush(R6,R7,R9,R10,R11,R12,R13,R14);
+    R1=4; //acquire inode
+    R2=[SYSTEM_STATUS_TABLE+1];
+    R3=inodeIndex;
+    call RESOURCE_MANAGER;
+    multipop(R6,R7,R9,R10,R11,R12,R13,R14);
+    if(R0==-1) then // locking inode failed
+        [retAddress]=-1;
+        SP=userSP;
+        ireturn;
+    endif;
+    alias Lseek R8;
+    Lseek=[openfileEntry+2];
+    alias bufferAddr R5;
+    bufferAddr=[PTBR+2*(buffer/512)]*512+(buffer%512);
+    if([openfileEntry]==INODE_ROOT) then
+        if(Lseek==480) then
+            multipush(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+            R1=5; //release inode
+            R2=[SYSTEM_STATUS_TABLE+1];
+            R3=inodeIndex;
+            call RESOURCE_MANAGER;
+            multipop(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+            [retAddress]=-2;
+            SP=userSP;
+            ireturn;
+        endif;
+        [bufferAddr]=[ROOT_FILE+Lseek];
+        Lseek=Lseek+1;
+        [openfileEntry+2]=Lseek;
+    else
+        if(Lseek==[INODE_TABLE+16*inodeIndex+2]) then  //end of file
+            multipush(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+            R1=5; //release inode
+            R2=[SYSTEM_STATUS_TABLE+1];
+            R3=inodeIndex;
+            call RESOURCE_MANAGER;
+            multipop(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+            [retAddress]=-2;
+            SP=userSP;
+            ireturn;
+        endif;
+        multipush(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+        R1=2;                                          //buffered read
+        R2=[INODE_TABLE+16*inodeIndex+8+(Lseek/512)];  //block number
+        R3=Lseek%512;                                  //offset
+        R4=bufferAddr;
+        call FILE_MANAGER;
+        multipop(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+        Lseek=Lseek+1;
+        [openfileEntry+2]=Lseek;
+    endif;
+    multipush(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+    R1=5; //release inode
+    R2=[SYSTEM_STATUS_TABLE+1];
+    R3=inodeIndex;
+    call RESOURCE_MANAGER;
+    multipop(R5,R6,R7,R8,R9,R10,R11,R12,R13,R14);
+endif;
+[pt+9]=0;
+[retAddress]=0;
+SP=userSP;
+ireturn;

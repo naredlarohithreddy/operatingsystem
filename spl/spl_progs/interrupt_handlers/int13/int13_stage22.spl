@@ -1,0 +1,82 @@
+alias userSP R10;
+userSP=SP;
+[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+13]=SP; //saving user stack pointer
+SP=[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+11]*512-1;//switching to kernal stack
+alias functionNum R9;
+functionNum=[[PTBR+2*((userSP-5)/512)]*512 + (userSP-5)%512];
+if(functionNum==17) then // Semget
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=17; 
+    alias i R11;
+    alias pid R12;
+    alias index R13;
+    index=-1;
+    pid=[SYSTEM_STATUS_TABLE+1];
+    i=0;
+    while(i<8) do //  per-process page table
+        if([[PROCESS_TABLE +pid*16+11]*512+2*i+496]==-1) then 
+            index=i;
+            break;
+        endif;
+        i=i+1;
+    endwhile;
+    if(index==-1) then // no free entry in process table
+        R0=-1;
+        [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+        SP=userSP;
+        ireturn;
+    endif;
+    [[PROCESS_TABLE +pid*16+11]*512+2*index+496]=1; // resource identifier as 1 meaning semaphore
+    multipush(R9,R10,R11,R12,R13);
+    R1=6; // acquire semaphore
+    R2=pid;
+    call RESOURCE_MANAGER; //returns semaphore index or -1
+    multipop(R9,R10,R11,R12,R13);
+    if(R0==-1) then // no free semaphore
+        R0=-2;
+        [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+        SP=userSP;
+        ireturn;
+    endif;
+    [[PROCESS_TABLE +pid*16+11]*512+2*index+1+496]=R0;
+    R0=index;
+    [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; 
+endif;
+if(functionNum==18) then // Semrelease
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=18; 
+    alias semID R11;
+    alias pid R12;
+    pid=[SYSTEM_STATUS_TABLE+1];
+    semID=[[PTBR+2*((userSP-4)/512)]*512 + (userSP-4)%512];
+    if(semID<0) then
+        R0=-1;
+        [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+        SP=userSP;
+        ireturn;
+    endif;
+    if(semID>7) then
+        R0=-1;
+        [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+        SP=userSP;
+        ireturn;
+    endif;
+    if([[PROCESS_TABLE +pid*16+11]*512+2*semID+496]!=1) then
+        R0=-1;
+        [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+        SP=userSP;
+        ireturn;
+    endif;
+    multipush(R9,R10,R11,R12);
+    R1=7; //release semaphore
+    R2=pid;
+    R3=[[PROCESS_TABLE +pid*16+11]*512+2*semID+1+496];
+    call RESOURCE_MANAGER;
+    multipop(R9,R10,R11,R12);
+    [[PROCESS_TABLE +pid*16+11]*512+2*semID+496]=-1;
+    [[PROCESS_TABLE +pid*16+11]*512+2*semID+1+496]=-1;
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; 
+    R0=0;
+    [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+endif;
+SP=userSP;
+ireturn;

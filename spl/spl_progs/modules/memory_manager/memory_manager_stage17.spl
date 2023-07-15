@@ -1,0 +1,40 @@
+alias functionNum R1;
+if(functionNum==1) then //get free page
+    [SYSTEM_STATUS_TABLE+3]=[SYSTEM_STATUS_TABLE+3]+1; //incrementing wait_mem_count
+    while([SYSTEM_STATUS_TABLE+2]==0) do // while mem is full
+        [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=WAIT_MEM;
+        multipush(R0,R1);
+        call SCHEDULER;
+        multipop(R0,R1);
+    endwhile;
+    [SYSTEM_STATUS_TABLE+3]=[SYSTEM_STATUS_TABLE+3]-1;
+    [SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]-1;
+    alias i R3;
+    i=0;
+    while(i<MAX_MEM_PAGE) do   
+        if([MEMORY_FREE_LIST + i]==0) then
+            [MEMORY_FREE_LIST + i]=1;
+            R0=i; //return value = free page
+            //breakpoint; // BREAKPOINT
+            return;
+        endif;
+        i=i+1;
+    endwhile;
+endif;
+if(functionNum==2) then //release page
+    alias pageNum R2;
+    [MEMORY_FREE_LIST+ pageNum]=[MEMORY_FREE_LIST+ pageNum]-1;
+    if([MEMORY_FREE_LIST+ pageNum]==0) then
+        [SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]+1;
+        alias i R3;
+        i=0;
+        while(i<16) do  
+            if([PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]==WAIT_MEM) then 
+                [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=READY;
+            endif;
+            i=i+1;
+        endwhile;
+    endif;
+    //breakpoint; //BREAKPOINT
+    return;
+endif;

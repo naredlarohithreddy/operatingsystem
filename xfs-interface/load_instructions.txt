@@ -1,0 +1,30 @@
+load --exhandler ../spl/spl_progs/interrupt_handlers/exception_handler/exception_handler.xsm
+load --int=timer ../spl/spl_progs/interrupt_handlers/timer_interrupt/timer_interrupt_stage27.xsm
+load --int=disk ../spl/spl_progs/interrupt_handlers/disk_interrupt/disk_interrupt_stage18.xsm
+load --int=console ../spl/spl_progs/interrupt_handlers/console_interrupt/console_interrupt_stage16.xsm
+load --int=4 ../spl/spl_progs/interrupt_handlers/int4/int4_stage23.xsm
+load --int=5 ../spl/spl_progs/interrupt_handlers/int5/int5_stage25.xsm
+load --int=6 ../spl/spl_progs/interrupt_handlers/int6/int6_stage24.xsm
+load --int=7 ../spl/spl_progs/interrupt_handlers/int7/int7_stage25.xsm
+load --int=8 ../spl/spl_progs/interrupt_handlers/int8/int8_stage24.xsm
+load --int=9 ../spl/spl_progs/interrupt_handlers/int9/int9_stage19.xsm
+load --int=10 ../spl/spl_progs/interrupt_handlers/int10/int10_stage20.xsm
+load --int=11 ../spl/spl_progs/interrupt_handlers/int11/int11_stage21.xsm
+load --int=12 ../spl/spl_progs/interrupt_handlers/int12/int12_stage26.xsm
+load --int=13 ../spl/spl_progs/interrupt_handlers/int13/int13_stage22.xsm
+load --int=14 ../spl/spl_progs/interrupt_handlers/int14/int14_stage22.xsm
+load --int=15 ../spl/spl_progs/interrupt_handlers/int15/int15_stage26.xsm
+load --int=16 ../spl/spl_progs/interrupt_handlers/int16/int16_stage26.xsm
+load --int=17 ../spl/spl_progs/interrupt_handlers/int17/int17_stage26.xsm
+load --module 0 ../spl/spl_progs/modules/resource_manager/resource_manager_stage24.xsm
+load --module 1 ../spl/spl_progs/modules/process_manager/process_manager_stage25.xsm
+load --module 2 ../spl/spl_progs/modules/memory_manager/memory_manager_stage27.xsm
+load --module 3 ../spl/spl_progs/modules/file_manager/file_manager_stage25.xsm
+load --module 4 ../spl/spl_progs/modules/device_manager/device_manager_stage23.xsm
+load --module 5 ../spl/spl_progs/modules/scheduler_module/scheduler_stage27.xsm
+load --module 6 ../spl/spl_progs/modules/pager_module/pager_module_stage27.xsm
+load --module 7 ../spl/spl_progs/modules/boot_module/boot_module_stage27.xsm
+load --os ../spl/spl_progs/os_startup_code/os_startup_code_stage27.xsm
+load --idle ../expl/expl_progs/idle_progs/idle.xsm
+load --init ../expl/expl_progs/stage_26/login.xsm
+load --shell ../expl/expl_progs/stage_26/shell.xsm

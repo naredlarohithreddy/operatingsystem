@@ -1,0 +1,65 @@
+alias userSP R11;
+userSP=SP;
+
+alias pt R12;
+pt=PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16;
+
+[pt+9]=27; //mode flag = login sys call num 27
+
+[pt+13]=SP; //saving user stack pointer
+SP=[pt+11]*512-1;//switching to kernal stack
+
+alias retAddress R13;
+retAddress=[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512;
+
+if([SYSTEM_STATUS_TABLE+1]!=1) then     // login has pid = 1
+    [retAddress]=-2;
+    [pt+9]=0;
+    SP=userSP;
+    ireturn;
+endif;
+
+alias userName R14;
+userName=[[PTBR+2*((userSP-4)/512)]*512 + (userSP-4)%512];
+
+alias Pwd R15;
+Pwd=[[PTBR+2*((userSP-3)/512)]*512+((userSP-3)%512)];
+
+alias userID R9;
+alias i R10;
+i=0;
+while(i<MAX_USER_NUM) do
+    if([USER_TABLE+2*i]==userName) then 
+        userID=i;
+        break;
+    endif;
+    i=i+1;
+endwhile;
+if(i==16) then  // userName does not exist
+    [retAddress]=-1;
+    [pt+9]=0;
+    SP=userSP;
+    ireturn;
+endif;
+
+encrypt Pwd;
+if([USER_TABLE+2*userID+1]!=Pwd) then // password not matched
+    [retAddress]=-1;
+    [pt+9]=0;
+    SP=userSP;
+    ireturn;
+endif;
+
+[PROCESS_TABLE+2*16+4]=CREATED;       // setting state of shell process as CREATED
+[PROCESS_TABLE+2*16+3]=userID;
+[pt+4]=WAIT_PROCESS;                  // setting state of login process as WAIT_PROCESS
+[pt+5]=2;
+[SYSTEM_STATUS_TABLE]=userID;
+
+multipush(R9,R10,R11,R12,R13,R14,R15);
+call SCHEDULER;
+multipop(R9,R10,R11,R12,R13,R14,R15);
+[retAddress]=0;
+[pt+9]=0;
+SP=userSP;
+ireturn;

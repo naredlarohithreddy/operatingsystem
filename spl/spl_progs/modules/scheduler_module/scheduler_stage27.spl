@@ -1,0 +1,42 @@
+alias currentPID R0;
+currentPID=[SYSTEM_STATUS_TABLE+1];
+backup;
+alias process_table_entry R1;
+process_table_entry = PROCESS_TABLE + currentPID * 16;
+[process_table_entry + 12] = SP % 512;
+[process_table_entry + 14] = PTBR;
+[process_table_entry + 15] = PTLR;
+alias i R6;
+alias newPID R7;
+if([SYSTEM_STATUS_TABLE+5]!=0) then // paging is ongoing
+    if(([PROCESS_TABLE+16*SWAPPER_DAEMON+4]==READY)||([PROCESS_TABLE+16*SWAPPER_DAEMON+4]==CREATED)) then
+        newPID=SWAPPER_DAEMON; // pid 15  
+    else
+        newPID=0; //idle
+    endif;
+else
+    i=(currentPID+1)%15;
+    while(i<15) do
+        if(([PROCESS_TABLE+16*i+6]!=1)&&(([PROCESS_TABLE +16*i +4]==READY) || ([PROCESS_TABLE +16*i +4]==CREATED))) then
+            newPID=i;
+            break;
+        endif;
+        i=(i+1)%15;
+    endwhile;
+endif;
+alias new_process_table R4;
+new_process_table = PROCESS_TABLE + newPID * 16;
+SP = [new_process_table + 11] * 512 + [new_process_table + 12];
+PTBR = [new_process_table + 14];
+PTLR = [new_process_table + 15];
+[SYSTEM_STATUS_TABLE + 1] = newPID;
+if([new_process_table + 4] == CREATED) then
+    [new_process_table + 4] = RUNNING;
+    SP = [new_process_table + 13];
+    BP = [[new_process_table + 11] * 512] ;
+    [new_process_table +9]=0;
+    ireturn;
+endif;
+[new_process_table + 4] = RUNNING;
+restore;
+return;

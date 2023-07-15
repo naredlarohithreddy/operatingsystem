@@ -1,0 +1,143 @@
+alias funcNumber R1;
+alias pid R2;
+
+if(funcNumber==1) then //swap out
+    alias i R5;
+    alias pt R6;
+    alias id R7;
+    alias j R8;
+    alias tick R9;
+    i=3;
+    j=0;
+    tick=-1;
+    while(i<15) do
+        pt=PROCESS_TABLE+16*i; 
+
+        //checking if any process in WAIT_PROCESS
+        if((j==0)&&([pt+6]==0)&&([pt+4]==WAIT_PROCESS)) then
+            id=i;
+            break;
+        endif;
+
+        //checking if any process in WAIT_SEMAPHORE if no process in WAIT_PROCESS
+        if((j==1)&&([pt+6]==0)&&([pt+4]==WAIT_SEMAPHORE)) then
+            id=i;
+            break;
+        endif;
+
+        //checking for process with highest tick if no process in WAIT_PROCESS and WAIT_SEMAPHORE
+        if((j==2)&&([pt]>tick)&&([pt+6]==0)&&([pt+4]!=RUNNING)&&([pt+4]!=TERMINATED)&&([pt+4]!=ALLOCATED)) then
+            tick=[pt];
+            id=i;
+        endif;
+
+        i=i+1;
+        if((i==15)&&(j!=2)) then
+            i=3;
+            j=j+1;
+        endif;
+    endwhile;
+    if((i==15)&&(j==2)&&(tick==-1)) then // no such process
+        [SYSTEM_STATUS_TABLE+5]=0; //paging status to 0
+        return;
+    endif;
+    
+    pt=PROCESS_TABLE+16*id;
+    [pt]=0;
+    i=2;
+    alias pageNum R8;
+    while(i<10) do   
+        pageNum=[pt+14]+2*i;
+
+        //if stack or heap which is not shared
+        if([pageNum]!=-1) then
+            if(((i==8)||(i==9))||(((i==2)||(i==3))&&([MEMORY_FREE_LIST+[pageNum]]==1))) then
+            multipush(R1,R2,R5,R6,R7,R8);
+            R1=6; // get swap block
+            call MEMORY_MANAGER;
+            multipop(R1,R2,R5,R6,R7,R8);
+            [DISK_MAP_TABLE+10*id+i]=R0;
+            multipush(R1,R2,R5,R6,R7,R8);
+            R1=1; // disk store
+            R2=SWAPPER_DAEMON;
+            R3=[pageNum];
+            R4=[DISK_MAP_TABLE+10*id+i];
+            call DEVICE_MANAGER;
+            multipop(R1,R2,R5,R6,R7,R8);
+            endif;
+        endif;
+        // if code or stack or heap which is not shared
+        if(([pageNum]!=-1)&&(((i>=4)&&(i<=9))||([MEMORY_FREE_LIST+[pageNum]]==1))) then
+            multipush(R1,R2,R5,R6,R7,R8);
+            R1=2; // release page
+            R2=[pageNum];
+            call MEMORY_MANAGER;
+            multipop(R1,R2,R5,R6,R7,R8);
+            [pageNum+0]=-1;
+            [pageNum+1]="0000";
+        endif;
+        i=i+1;
+    endwhile;
+    [pt+6]=1;
+    [SYSTEM_STATUS_TABLE+4]=[SYSTEM_STATUS_TABLE+4]+1; // incrementing swap count
+    [SYSTEM_STATUS_TABLE+5]=0;
+    return;
+endif;
+
+if(funcNumber==2) then //swap in
+    alias i R5;
+    alias id R6;
+    alias pt R7;
+    alias tick R8;
+    i=3;
+    tick=-1;
+    while(i<15) do 
+        pt=PROCESS_TABLE+16*i; 
+        if(([pt+6]==1)&&([pt+4]==READY)&&([pt]>tick)) then
+            tick=[pt];
+            id=i;
+        endif;
+        i=i+1;
+    endwhile;
+    if(tick==-1) then // no process is in READY state
+        [SYSTEM_STATUS_TABLE+5]=0;
+        return;
+    endif;
+    pt=PROCESS_TABLE+16*id;
+    [pt]=0;
+    i=2;
+    alias page R9;
+    alias block R10;
+    while(i<10) do
+        block=[DISK_MAP_TABLE+10*id+i];
+        //if stack or heap which is swapped out
+        if(((i==8)||(i==9))||(((i==2)||(i==3))&&(block!=-1))) then
+            multipush(R1,R2,R5,R6,R7,R8,R10);
+            R1=1; // get free page
+            call MEMORY_MANAGER;
+            page=R0;
+            multipop(R1,R2,R5,R6,R7,R8,R10);
+            multipush(R1,R2,R5,R6,R7,R8,R9,R10);
+            R1=2; // disk load
+            R2=SWAPPER_DAEMON;
+            R3=page;
+            R4=block;
+            call DEVICE_MANAGER;
+            multipop(R1,R2,R5,R6,R7,R8,R9,R10);
+            multipush(R1,R2,R5,R6,R7,R8,R9,R10);
+            R1=4; // release block
+            R2=block;
+            R3=SWAPPER_DAEMON;
+            call MEMORY_MANAGER;
+            multipop(R1,R2,R5,R6,R7,R8,R9,R10);
+            [[pt+14]+2*i]=page;
+            [[pt+14]+2*i+1]="0110";
+            [DISK_MAP_TABLE+10*id+i]=-1;
+        endif;
+        i=i+1;
+    endwhile;
+    [pt+6]=0;
+    [SYSTEM_STATUS_TABLE+4]=[SYSTEM_STATUS_TABLE+4]-1; // incrementing swap count
+    [SYSTEM_STATUS_TABLE+5]=0;
+    return;
+endif;

@@ -1,0 +1,54 @@
+breakpoint;
+[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+13]=SP;
+SP=[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+11]*512-1;
+backup;
+if([SYSTEM_STATUS_TABLE+5]!=0) then //paging
+    if(([SYSTEM_STATUS_TABLE+1]==SWAPPER_DAEMON)&&([SYSTEM_STATUS_TABLE+5]==SWAP_OUT)) then  
+        R1=1; // swap out
+        R2=[SYSTEM_STATUS_TABLE+1];
+        call PAGER_MODULE;
+    endif;
+    if(([SYSTEM_STATUS_TABLE+1]==SWAPPER_DAEMON)&&([SYSTEM_STATUS_TABLE+5]==SWAP_IN)) then  
+        R1=2; // swap in
+        R2=[SYSTEM_STATUS_TABLE+1];
+        call PAGER_MODULE;
+    endif;
+else
+    if([SYSTEM_STATUS_TABLE+2]<MEM_LOW) then
+        [SYSTEM_STATUS_TABLE+5]=SWAP_OUT;
+    else
+        if([SYSTEM_STATUS_TABLE+4]>0) then
+            alias i R0;
+            i=0;
+            while(i<15) do  
+                if(([PROCESS_TABLE+16*i+6]==1)&&([PROCESS_TABLE+16*i]>MAX_TICK)) then
+                    [SYSTEM_STATUS_TABLE+5]=SWAP_IN;
+                    break;
+                endif;
+                i=i+1;
+            endwhile;
+            if([SYSTEM_STATUS_TABLE+2]>MEM_HIGH) then
+                [SYSTEM_STATUS_TABLE+5]=SWAP_IN;
+            endif;
+        endif;
+    endif;
+endif;
+alias currentPID R0;
+currentPID=[SYSTEM_STATUS_TABLE+1];
+alias process_table_entry R1;
+process_table_entry = PROCESS_TABLE + currentPID * 16;
+[process_table_entry + 4] = READY;
+alias i R2;
+i=0;
+while(i<16) do
+    if([PROCESS_TABLE +16*i +4]!=TERMINATED) then
+        [PROCESS_TABLE +16*i] = [PROCESS_TABLE +16*i] + 1;
+    endif;
+    i = i+1;
+endwhile;
+call SCHEDULER;
+restore;
+SP=[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+13];
+[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+9]=0;
+//breakpoint;
+ireturn;

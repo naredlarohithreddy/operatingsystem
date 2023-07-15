@@ -1,0 +1,104 @@
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=9; //mode flag = exec sys call num 9
+alias userSP R11;
+userSP=SP;
+[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+13]=SP; //saving user stack pointer
+SP=[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+11]*512-1;//switching to kernal stack
+alias physicalPageNum R1;
+alias offset R2;
+alias fileNamePhyscialAddr R3;
+physicalPageNum=[PTBR+2*((userSP-4)/512)];
+offset=(userSP-4)%512;
+fileNamePhyscialAddr=(physicalPageNum*512)+offset;
+alias fileName R4;
+fileName=[fileNamePhyscialAddr];
+alias i R5;
+i=0;
+alias inodeIndex R6;
+while(i<MAX_FILE_NUM) do
+    if([INODE_TABLE+ 16*i+ 1]!=fileName) then
+        i=i+1;
+        continue;    
+    else
+        inodeIndex = i;
+        break;
+    endif;
+endwhile;
+if(i==MAX_FILE_NUM) then 
+    alias physicalAddrRetVal R7;
+    physicalAddrRetVal=([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512);
+    [physicalAddrRetVal]=-1;
+    SP=userSP;
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+    ireturn;
+endif;
+multipush(R0,R1,R2,R3,R4,R5,R6);
+R1=3;  // exit func call number
+R2=[SYSTEM_STATUS_TABLE+1];
+call PROCESS_MANAGER; //module 1
+multipop(R0,R1,R2,R3,R4,R5,R6);
+alias userPage R8;
+userPage = [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11];
+[MEMORY_FREE_LIST + userPage] = [MEMORY_FREE_LIST + userPage] + 1;
+[SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]-1; //decrementing  mem_free_count
+SP=userPage*512-1;
+i=496;
+while(i<512) do //last 16 words of userpage as per-process table initialization
+    [userPage*512+i]=-1;
+    i=i+1;
+endwhile;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=RUNNING;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+7]=inodeIndex;
+PTBR=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+14];
+PTLR=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+15];
+//setting lib pages
+[PTBR+0]=63;
+[PTBR+1]="0100";
+[PTBR+2]=64;
+[PTBR+3]="0100";
+multipush(R0,R1,R2,R3,R4,R5,R6,R8);
+i=0;
+while(i<2) do  
+    [PTBR+2*i+4]=-1; //invalidating heap 
+    [PTBR+2*i+5]="0000";
+    i=i+1;
+endwhile;
+multipop(R0,R1,R2,R3,R4,R5,R6,R8);
+multipush(R0,R1,R2,R3,R4,R5,R6,R8);
+i=0;
+while(i<2) do  
+    R1=1;  // get free page func call number
+    call MEMORY_MANAGER; //module 2
+    [PTBR+2*i+16]=R0; //stack
+    [PTBR+2*i+17]="0110";
+    i=i+1;
+endwhile;
+multipop(R0,R1,R2,R3,R4,R5,R6,R8);
+multipush(R0,R1,R2,R3,R4,R5,R6,R8);
+alias codeBlock R9;
+codeBlock=[INODE_TABLE+inodeIndex*16+8];
+R1=5; //get code page
+R2=codeBlock;
+call MEMORY_MANAGER;
+[PTBR+8]=R0; //code page
+[PTBR+9]="0100";
+multipop(R0,R1,R2,R3,R4,R5,R6,R8);
+i=1;
+while(i<4) do //invalidating other code pages
+    [PTBR+2*i+8]=-1; //code page
+    [PTBR+2*i+9]="0000";
+    i=i+1;
+endwhile;
+i=0;
+while(i<10) do //setting disk map table entries as -1
+    [DISK_MAP_TABLE+[SYSTEM_STATUS_TABLE+1]*10+i]=-1;
+    i=i+1;
+endwhile;
+i=0;
+while(i<4) do //setting entries of code blocks into disk map table from inode table
+    [DISK_MAP_TABLE+[SYSTEM_STATUS_TABLE+1]*10+4+i] = [INODE_TABLE+inodeIndex*16+8+i];
+    i=i+1;
+endwhile;
+[[PTBR+16]*512]=[[PTBR+8]*512+1];
+SP=8*512;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+ireturn;

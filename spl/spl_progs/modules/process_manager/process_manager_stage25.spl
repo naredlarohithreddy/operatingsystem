@@ -1,0 +1,181 @@
+alias functionNum R1;
+alias currentPID R2;
+
+if(functionNum==2) then //free user page
+    alias i R10;
+    i=0;
+    alias resIDAddr R6;
+    multipush(R0,R1,R2);
+    while(i<8) do
+        resIDAddr=[PROCESS_TABLE +currentPID*16+11]+2*i+496;
+        multipush(R6,R10);
+        if([resIDAddr]==SEMAPHORE) then
+            R1=7; //release semaphore
+            R3=currentPID;
+            R2=[resIDAddr+1];
+            call RESOURCE_MANAGER;
+        endif;
+        multipop(R6,R10);
+        multipush(R6,R10);
+        if([resIDAddr]==FILE) then
+            R1=4; //close
+            R2=[resIDAddr+1];
+            call FILE_MANAGER;
+        endif;
+        multipop(R6,R10);
+        i=i+1;
+    endwhile;
+    multipop(R0,R1,R2);
+    alias userPage R3;
+    userPage = [PROCESS_TABLE+currentPID*16+11];
+    multipush(R0,R1,R2,R3);
+    R1=2; //release page
+    R2=userPage;
+    call MEMORY_MANAGER; //module 2
+    multipop(R0,R1,R2,R3);
+    return;
+endif;
+
+if(functionNum==3) then //exit
+    multipush(R0,R1,R2);
+    R1=4; // free page table
+    R2=currentPID;
+    call PROCESS_MANAGER; //module 1
+    multipop(R0,R1,R2);
+    multipush(R0,R1,R2);
+    R1=2; // free user page area
+    R2=currentPID;
+    call PROCESS_MANAGER; //module 1
+    multipop(R0,R1,R2);
+    alias i R4;
+    i=0;
+    alias pt R5;
+    while(i<16) do
+        pt=PROCESS_TABLE+i*16;  
+        if([PROCESS_TABLE+currentPID*16+9]!=9) then
+            if(([pt+4]==WAIT_PROCESS)&&([pt+5]==currentPID)) then
+                [pt+4]=READY;
+            endif;
+            if([pt+2]==currentPID) then
+                [pt+2]=-1;
+            endif;
+        endif;
+    i=i+1;
+    endwhile;
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=TERMINATED;
+    return;
+endif;
+
+if(functionNum==4) then //free page table
+    PTBR=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+14];
+    [PTBR+0]=-1; //invalidating lib pages
+    [PTBR+1]="0000";
+    [PTBR+2]=-1;
+    [PTBR+3]="0000";
+    alias i R4;
+    i=0;
+    while(i<8) do //releasing valid pages
+        if([PTBR+2*i+4]!=-1) then   
+            multipush(R0,R1,R2,R4);
+            R1=2; //release page
+            R2=[PTBR+2*i+4];
+            call MEMORY_MANAGER; //module 2
+            multipop(R0,R1,R2,R4); 
+            [PTBR+2*i+4]=-1;                    // not in stage 18 code
+            [PTBR+2*i+5]="0000";
+        endif;
+        i=i+1;
+    endwhile;
+    i=2;
+    while(i<4) do
+        if([DISK_MAP_TABLE+10*currentPID+i]!=-1) then
+            multipush(R0,R1,R2,R3,R4);
+            R1=4; //release block
+            R3=currentPID;
+            R2=[DISK_MAP_TABLE+10*currentPID+i];
+            call MEMORY_MANAGER;
+            multipop(R0,R1,R2,R3,R4);
+        endif;
+        i=i+1;
+    endwhile;
+    i=8;
+    while(i<10) do
+        if([DISK_MAP_TABLE+10*currentPID+i]!=-1) then
+            multipush(R0,R1,R2,R3,R4);
+            R1=4; //release block
+            R3=currentPID;
+            R2=[DISK_MAP_TABLE+10*currentPID+i];
+            call MEMORY_MANAGER;
+            multipop(R0,R1,R2,R3,R4);
+        endif;
+        i=i+1;
+    endwhile;
+    i=0;
+    while(i<10) do //free disk map table
+        [DISK_MAP_TABLE+10*currentPID+i]=-1;
+        i=i+1;
+    endwhile;
+    return;
+endif;
+
+if(functionNum==1) then //Get PCB entry
+    alias i R4;
+    alias pt R5;
+    i=0;
+    while(i<16) do
+        pt = PROCESS_TABLE+16*i;
+        if([pt+4] == TERMINATED) then
+            [pt+1]=i;
+            [pt+4]=ALLOCATED;
+            [pt+14]=PAGE_TABLE_BASE+20*i;
+            [pt+15]=10;
+            R0=i;
+            return;
+        endif;
+        i=i+1;
+    endwhile;
+    R0=-1;
+    return;
+endif;
+
+if(functionNum==5) then // kill all
+    alias i R6;
+    i=0;
+    while(i<MAX_FILE_NUM) do
+        if([INODE_TABLE+16*i+1]!=-1) then
+            multipush(R1,R2,R6);
+            R1=4; //acquire inode
+            R2=currentPID;
+            R3=i;
+            call RESOURCE_MANAGER;
+            multipop(R1,R2,R6);
+        endif;
+        i=i+1;
+    endwhile;
+    //i=2;
+    i=3;
+    //while(i<MAX_PROC_NUM) do
+    while(i<MAX_PROC_NUM-1) do
+        if((i!=currentPID)&&([PROCESS_TABLE+16*i+4]!=TERMINATED)) then
+            multipush(R1,R2,R6);
+            R1=3; // exit process
+            R2=i;
+            call PROCESS_MANAGER;
+            multipop(R1,R2,R6);
+        endif;
+        i=i+1;
+    endwhile;
+    i=0;
+    while(i<MAX_FILE_NUM) do
+        if([INODE_TABLE+16*i+1]!=-1) then
+            multipush(R1,R2,R6);
+            R1=5; //release inode
+            R2=currentPID;
+            R3=i;
+            call RESOURCE_MANAGER;
+            multipop(R1,R2,R6);
+        endif;
+        i=i+1;
+    endwhile;
+    return;
+endif;
