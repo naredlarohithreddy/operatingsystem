@@ -1,0 +1,15 @@
+mov R0, 1
+mov R1, 21
+
+loop:
+    mov R2, R0
+    mov R2, R0
+    eq R2, R1
+    jnz R2, exit
+    mov R16, R0
+    port P1, R16
+    out
+    inr R0
+    jmp loop
+exit:
+    halt
